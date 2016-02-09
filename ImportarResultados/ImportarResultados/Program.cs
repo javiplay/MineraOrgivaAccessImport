@@ -18,6 +18,12 @@ namespace ImportarResultados
         static void Main(string[] args)
         {
 
+            if (args.Length < 2)
+            {
+                Console.WriteLine("El programa necesita la ruta del archivo xls y del accdb.");
+                return;
+            }
+
             MyApp = new Excel.Application();
             MyApp.Visible = false;
             try
@@ -25,9 +31,7 @@ namespace ImportarResultados
                 MyBook = MyApp.Workbooks.Open(args[0]);
             }
             catch (Exception e)
-            {
-                Console.WriteLine(Directory.GetCurrentDirectory());
-                //foreach (var d in Directory.EnumerateFiles(Directory.GetCurrentDirectory())) Console.WriteLine(d);
+            {                                
                 Console.WriteLine(e.Message);
                 return;
             }
