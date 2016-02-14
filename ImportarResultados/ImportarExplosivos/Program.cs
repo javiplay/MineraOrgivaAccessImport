@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 
@@ -12,38 +13,111 @@ namespace ImportarExplosivos
 {
     class Program
     {
+
+        [STAThread]
         static void Main(string[] args)
         {
             // cargar el xml
-            Shipment shipment = null;
-            string path = @"C:\Users\Javier\Dropbox\MineraOrgiva\20160126_032942_20160126081951.xml";
 
-            XmlSerializer serializer = new XmlSerializer(typeof(Shipment));
-
-            StreamReader reader = new StreamReader(path);
-            shipment = (Shipment)serializer.Deserialize(reader);
-            reader.Close();
-
-
-
-
-            Console.WriteLine("Pulse una tecla PARA TEST...");
+            Console.WriteLine("Pulse una tecla para seleccionar el XML de envío...");
             Console.ReadKey();
+            OpenFileDialog openFileDialog1 = new OpenFileDialog();
+
+            openFileDialog1.Title = "Seleccione el XML del envío...";
+            openFileDialog1.InitialDirectory = @"c:\Users\";
+            openFileDialog1.Filter = "xml files (*.xml)|*.xml|All files (*.*)|*.*";
+            openFileDialog1.FilterIndex = 1;
+            openFileDialog1.RestoreDirectory = true;
 
 
-            string ConnString = @"Provider=Microsoft.ACE.OLEDB.12.0;Data Source=C:\Users\Javier\Dropbox\MineraOrgiva\MaterialExplosivos.accdb;  ";
-            OleDbConnection conn = new OleDbConnection(ConnString);
-            conn.Open();
 
-            InsertarDescripciones(shipment, conn);
-            InsertarProductos(shipment, conn);
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    Shipment shipment = null;
+                    string path = openFileDialog1.FileName;
+                    // @"C:\Users\Javier\Dropbox\MineraOrgiva\20160126_032942_20160126081951.xml";
 
-            conn.Close();
+
+                    XmlSerializer serializer = new XmlSerializer(typeof(Shipment));
+
+                    StreamReader reader = new StreamReader(path);
+
+                    shipment = (Shipment)serializer.Deserialize(reader);
 
 
-            Console.WriteLine("Pulse una tecla...");
-            Console.ReadKey();
+                    reader.Close();
 
+
+                    Console.WriteLine("Pulse una tecla seleccionar la base de datos access...");
+                    Console.ReadKey();
+
+                    OpenFileDialog openFileDialog2 = new OpenFileDialog();
+
+                    openFileDialog2.Title = "Seleccione el XML del envío...";
+                    openFileDialog2.InitialDirectory = @"c:\Users\";
+                    openFileDialog2.Filter = "accdb files (*.accdb)|*.accdb|All files (*.*)|*.*";
+                    openFileDialog2.FilterIndex = 1;
+                    openFileDialog2.RestoreDirectory = true;
+
+
+                    if (openFileDialog2.ShowDialog() == DialogResult.OK)
+                    {
+                        try
+                        {
+
+
+                            string ConnString = @"Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" + openFileDialog2.FileName;
+                            OleDbConnection conn = new OleDbConnection(ConnString);
+                            conn.Open();
+
+                            InsertarEnvio(shipment, conn);
+                            InsertarProductos(shipment, conn);
+
+                            conn.Close();
+
+                            Console.WriteLine("Pulse una tecla para finalizar...");
+                            Console.ReadKey();
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("Error: Could not read file from disk. Original error: " + ex.Message);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Error: Could not read file from disk. Original error: " + ex.Message);
+                }
+            }
+
+
+
+
+
+        }
+
+        private static void InsertarEnvio(Shipment shipment, OleDbConnection conn)
+        {
+            string sql = ComandoSQLparEnvio(shipment);
+            try
+            {
+                (new OleDbCommand(sql, conn)).ExecuteNonQuery();
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Última excepción: " + e.Message);
+            }
+        }
+
+        private static string ComandoSQLparEnvio(Shipment s)
+        {
+            return
+              @"insert into Shipment (ShipmentNumber, PurchaseOrderNumber, DeliveryNoteNumber, ExpectedDeliveryDate) values " +
+              string.Format(@"(""{0}"", ""{1}"", ""{2}"", ""{3}"")",
+                              s.ShipmentNumber, s.PurchaseOrderNumber, s.DeliveryNoteNumber, s.ExpectedDeliveryDate);
         }
 
         private static void InsertarProductos(Shipment shipment, OleDbConnection conn)
@@ -54,7 +128,7 @@ namespace ImportarExplosivos
 
             foreach (ShipmentUnit su in shipment.Units) // insertamos los productos de primer nivel (cajas de goma2, cajas con detonadores y sacos)
             {
-                string sql = ComandoSQLparaUnit(su);
+                string sql = ComandoSQLparaUnit(su, shipment);
                 try
                 {
                     (new OleDbCommand(sql, conn)).ExecuteNonQuery();
@@ -69,12 +143,12 @@ namespace ImportarExplosivos
 
                 if (su.Items != null && su.Items.Any()) // en el caso de los detonadores metemos cada detonador
                 {
-                    InsertarUnitItems(su, conn);
+                    InsertarUnitItems(su, conn, shipment);
                 }
 
                 if (su.Units != null && su.Units.Any()) // en el caso de las cajas de explosivo hay que meter las bolsas
                 {
-                    InsertarUnitUnits(su, conn);
+                    InsertarUnitUnits(su, conn, shipment);
                 }
 
 
@@ -86,7 +160,7 @@ namespace ImportarExplosivos
 
         }
 
-        private static void InsertarUnitUnits(ShipmentUnit su, OleDbConnection conn)
+        private static void InsertarUnitUnits(ShipmentUnit su, OleDbConnection conn, Shipment shipment)
         {
             int inserted = 0;
             int omitted = 0;
@@ -94,7 +168,7 @@ namespace ImportarExplosivos
 
             foreach (ShipmentUnitUnit suu in su.Units)
             {
-                string sql = ComandoSQLparaUnitUnit(suu, su);
+                string sql = ComandoSQLparaUnitUnit(suu, su, shipment);
                 try
                 {
                     (new OleDbCommand(sql, conn)).ExecuteNonQuery();
@@ -109,7 +183,7 @@ namespace ImportarExplosivos
 
                 if (suu.Items != null && suu.Items.Any()) // en el caso de las bolsas metemos los cartuchos
                 {
-                    InsertarUnitUnitItems(suu, conn);
+                    InsertarUnitUnitItems(suu, conn, shipment);
                 }
 
             }
@@ -118,7 +192,7 @@ namespace ImportarExplosivos
             if (omitted > 0) Console.WriteLine("Última excepción: " + lastException.Message);
         }
 
-        private static void InsertarUnitUnitItems(ShipmentUnitUnit suu, OleDbConnection conn)
+        private static void InsertarUnitUnitItems(ShipmentUnitUnit suu, OleDbConnection conn, Shipment shipment)
         {
             int inserted = 0;
             int omitted = 0;
@@ -126,7 +200,7 @@ namespace ImportarExplosivos
 
             foreach (ShipmentUnitUnitItem suui in suu.Items)
             {
-                string sql = ComandoSQLparaUnitUnitItem(suui, suu);
+                string sql = ComandoSQLparaUnitUnitItem(suui, suu, shipment);
                 try
                 {
                     (new OleDbCommand(sql, conn)).ExecuteNonQuery();
@@ -144,7 +218,7 @@ namespace ImportarExplosivos
             if (omitted > 0) Console.WriteLine("Última excepción: " + lastException.Message);
         }
 
-        private static void InsertarUnitItems(ShipmentUnit su, OleDbConnection conn)
+        private static void InsertarUnitItems(ShipmentUnit su, OleDbConnection conn, Shipment shipment)
         {
             int inserted = 0;
             int omitted = 0;
@@ -152,7 +226,7 @@ namespace ImportarExplosivos
 
             foreach (ShipmentUnitItem sui in su.Items)
             {
-                string sql = ComandoSQLparaUnitItem(sui, su);
+                string sql = ComandoSQLparaUnitItem(sui, su, shipment);
                 try
                 {
                     (new OleDbCommand(sql, conn)).ExecuteNonQuery();
@@ -171,85 +245,62 @@ namespace ImportarExplosivos
         }
 
 
-        private static void InsertarDescripciones(Shipment shipment, OleDbConnection conn)
+
+
+
+        private static string ComandoSQLparaUnit(ShipmentUnit su, Shipment s)
         {
-            int inserted = 0;
-            int omitted = 0;
-            Exception lastException = null;
-
-            foreach (ShipmentSummaryItem si in shipment.SummaryItems)
-            {
-                string sql = ComandoSQLParaSummaryItem(si);
-
-                OleDbCommand cmd = new OleDbCommand(sql, conn);
-                int rows = 0;
-                try
-                {
-                    rows = cmd.ExecuteNonQuery();
-                    inserted++;
-                }
-                catch (Exception e)
-                {
-                    omitted++;
-                    lastException = e;
-                }
-
-            }
-            Console.WriteLine("Nuevas descripciones: " + inserted);
-            Console.WriteLine("Descripciones no insertadas: " + omitted);
-            if (omitted > 0) Console.WriteLine("Última excepción: " + lastException.Message);
-        }
-
-        private static string ComandoSQLParaSummaryItem(ShipmentSummaryItem si)
-        {
-            return @"insert into ProductDescriptions " +
-                                "(SID, PSN, ProductionDate, PackagingLevel, ProductName, ProductCode) " +
-                                "values " +
-                                string.Format(@"(""{0}"", ""{1}"", ""{2}"", {3}, ""{4}"", ""{5}"")",
-                                si.SID,
-                                si.PSN,
-                                si.ProductionDate,
-                                si.PackagingLevel,
-                                si.ProducerProductName,
-                                si.ProducerProductCode);
-        }
-
-        private static string ComandoSQLparaUnit(ShipmentUnit su)
-        {
+            ShipmentSummaryItem si = s.SummaryItems.Where(x => x.SID == su.SID).FirstOrDefault();
             return @"insert into ProductUnit " +
-                "(UID, PSN, SID, ItemQuantity, CountOfTradeUnits, PackagingLevel) " +
-                "values " +
-                string.Format(@"(""{0}"", ""{1}"", ""{2}"", {3}, {4}, {5})",
-                su.UID,
-                su.PSN,
-                su.SID,
-                su.ItemQuantity,
-                su.CountOfTradeUnits,
-                su.PackagingLevel);
+                "(UID, PSN, ItemQuantity, CountOfTradeUnits, PackagingLevel, ShipmentNumber, ProductName, ProductCode, ProductionDate) values " +
+                string.Format(@"(""{0}"", ""{1}"", {2}, {3}, {4}, ""{5}"", ""{6}"", ""{7}"", ""{8}"")",
+                                su.UID,
+                                su.PSN,
+                                su.ItemQuantity,
+                                su.CountOfTradeUnits,
+                                su.PackagingLevel,
+                                s.ShipmentNumber,
+                                si.ProducerProductName,
+                                si.ProducerProductCode,
+                                si.ProductionDate
+                                );
         }
 
-        private static string ComandoSQLparaUnitItem(ShipmentUnitItem sui, ShipmentUnit su)
+        private static string ComandoSQLparaUnitItem(ShipmentUnitItem sui, ShipmentUnit su, Shipment s)
         {
+            ShipmentSummaryItem si = s.SummaryItems.Where(x => x.SID == sui.SID).FirstOrDefault();
             return
-                @"insert into ProductUnit (UID, PSN, SID, ParentUID) values " +
-                string.Format(@"(""{0}"", ""{1}"", ""{2}"", ""{3}"")",
-                                sui.UID, sui.PSN, sui.SID, su.UID);
+                @"insert into ProductUnit (UID, PSN, ParentUID, ShipmentNumber, ProductName, ProductCode, ProductionDate) values " +
+                string.Format(@"(""{0}"", ""{1}"", ""{2}"", ""{3}"", ""{4}"", ""{5}"", ""{6}"")",
+                                sui.UID, sui.PSN, su.UID, s.ShipmentNumber, si.ProducerProductName, si.ProducerProductCode, si.ProductionDate);
         }
 
-        private static string ComandoSQLparaUnitUnit(ShipmentUnitUnit suu, ShipmentUnit su)
+        private static string ComandoSQLparaUnitUnit(ShipmentUnitUnit suu, ShipmentUnit su, Shipment s)
         {
-            return
-               @"insert into ProductUnit (UID, PSN, SID, ParentUID) values " +
-               string.Format(@"(""{0}"", ""{1}"", ""{2}"", ""{3}"")",
-                               suu.UID, suu.PSN, suu.SID, su.UID);
+            ShipmentSummaryItem si = s.SummaryItems.Where(x => x.SID == suu.SID).FirstOrDefault();
+            return @"insert into ProductUnit " +
+                "(UID, ParentUID, PSN, ItemQuantity, CountOfTradeUnits, PackagingLevel, ShipmentNumber, ProductName, ProductCode, ProductionDate) values " +
+                string.Format(@"(""{0}"", ""{1}"", ""{2}"", {3}, {4}, {5}, ""{6}"", ""{7}"", ""{8}"", ""{9}"")",
+                                suu.UID,
+                                su.UID,
+                                suu.PSN,
+                                suu.ItemQuantity,
+                                suu.CountOfTradeUnits,
+                                suu.PackagingLevel,
+                                s.ShipmentNumber,
+                                si.ProducerProductName,
+                                si.ProducerProductCode,
+                                si.ProductionDate
+                                );
         }
 
-        private static string ComandoSQLparaUnitUnitItem(ShipmentUnitUnitItem suui, ShipmentUnitUnit suu)
+        private static string ComandoSQLparaUnitUnitItem(ShipmentUnitUnitItem suui, ShipmentUnitUnit suu, Shipment s)
         {
+            ShipmentSummaryItem si = s.SummaryItems.Where(x => x.SID == suui.SID).FirstOrDefault();
             return
-               @"insert into ProductUnit (UID, PSN, SID, ParentUID) values " +
-               string.Format(@"(""{0}"", ""{1}"", ""{2}"", ""{3}"")",
-                               suui.UID, suui.PSN, suui.SID, suu.UID);
+                @"insert into ProductUnit (UID, PSN, ParentUID, ShipmentNumber, ProductName, ProductCode, ProductionDate) values " +
+                string.Format(@"(""{0}"", ""{1}"", ""{2}"", ""{3}"", ""{4}"", ""{5}"", ""{6}"")",
+                                suui.UID, suui.PSN, suu.UID, s.ShipmentNumber, si.ProducerProductName, si.ProducerProductCode, si.ProductionDate);
         }
     }
 }
