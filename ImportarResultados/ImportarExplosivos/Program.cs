@@ -1,12 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Data.OleDb;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Xml.Linq;
 using System.Xml.Serialization;
 
 namespace ImportarExplosivos
@@ -50,7 +46,7 @@ namespace ImportarExplosivos
                     reader.Close();
 
 
-                    Console.WriteLine("Pulse una tecla seleccionar la base de datos access...");
+                    Console.WriteLine("Pulse una tecla para seleccionar la base de datos access...");
                     Console.ReadKey();
 
                     OpenFileDialog openFileDialog2 = new OpenFileDialog();
